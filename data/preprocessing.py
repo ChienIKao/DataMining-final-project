@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from sklearn.cluster import KMeans
 
 GRID_SIZE = 200
 
@@ -15,26 +16,28 @@ BBOX = {
 _LAT_STEP = (BBOX["north"] - BBOX["south"]) / (GRID_SIZE - 1)
 _LON_STEP = (BBOX["east"]  - BBOX["west"])  / (GRID_SIZE - 1)
 
-# 競賽資料中已確認的特殊假日（颱風 / 大型活動，d 為 1-indexed）
-_EXTRA_HOLIDAYS = {31, 35}
-
 
 # ── 時間處理 ──────────────────────────────────────────────────────────────────
 
-def label_day_of_week(df: pd.DataFrame) -> pd.DataFrame:
+def label_holidays(df: pd.DataFrame) -> pd.DataFrame:
     """
-    為每筆記錄新增 day_of_week（0=日, 1=一, ..., 6=六）與 working_day（1=工作日, 0=假日）。
+    Use K-means (k=2) on daily active user counts to classify each day as
+    working day (is_holiday=0) or holiday (is_holiday=1).
+    The cluster with lower mean active users is labelled holiday.
+    """
+    daily_users = df.groupby("d")["uid"].nunique().reset_index()
+    daily_users.columns = ["d", "active_users"]
 
-    規則（1-indexed，d=7 為星期五）：
-      day_of_week = ((d - 7) % 7 + 5) % 7
-      working_day = 0 if day_of_week in {0, 6} else 1
-      額外假日（d=31, 35）強制 working_day = 0
-    """
-    d = df["d"]
-    df = df.copy()
-    df["day_of_week"] = ((d - 7) % 7 + 5) % 7
-    df["working_day"] = (~df["day_of_week"].isin([0, 6])).astype("int8")
-    df.loc[df["d"].isin(_EXTRA_HOLIDAYS), "working_day"] = 0
+    X = daily_users[["active_users"]].to_numpy(dtype=float)
+    kmeans = KMeans(n_clusters=2, random_state=42, n_init="auto")
+    labels = kmeans.fit_predict(X)
+
+    # cluster with lower centroid = holiday (fewer active users)
+    centers = kmeans.cluster_centers_.ravel()
+    holiday_cluster = int(np.argmin(centers))
+    daily_users["is_holiday"] = (labels == holiday_cluster).astype("int8")
+
+    df = df.merge(daily_users[["d", "is_holiday"]], on="d", how="left")
     return df
 
 
