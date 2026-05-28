@@ -16,4 +16,5 @@ dependencies = [
     "jpholiday>=0.1",
     "tqdm>=4.66",
     "pypdf>=6.12.2",
+    "pyarrow>=24.0.0",
 ]
