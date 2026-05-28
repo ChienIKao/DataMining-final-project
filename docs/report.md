@@ -63,7 +63,7 @@
 
 ### 2.1 每日活躍使用者趨勢
 
-![每日活躍使用者](../output/figures/daily_active_users.png)
+![每日活躍使用者](figures/daily_active_users.png)
 
 | 指標 | 數值 |
 |---|---|
@@ -87,7 +87,7 @@
 
 ### 2.3 時間模式分析（一天內的人流波動）
 
-![時間模式](../output/figures/time_of_day_pattern.png)
+![時間模式](figures/time_of_day_pattern.png)
 
 | 時段 | 工作日平均活躍使用者 | 說明 |
 |---|---|---|
@@ -102,7 +102,7 @@
 
 ### 2.4 空間分布：人流密度地圖
 
-![Unique Users Map](../output/figures/unique_users_map.png)
+![Unique Users Map](figures/unique_users_map.png)
 
 白底紅色地圖，顏色越深代表造訪的唯一使用者數越多。可清楚觀察到：
 - **名古屋市中心軸線**（名古屋駅 → 榮 → 大須）形成最深紅色帶狀區域
@@ -113,7 +113,7 @@
 
 | 早晨通勤（08:00-10:00） | 傍晚通勤（17:00-19:00） |
 |---|---|
-| ![早晨軌跡](../output/figures/trajectory_map_morning.png) | ![傍晚軌跡](../output/figures/trajectory_map_evening.png) |
+| ![早晨軌跡](figures/trajectory_map_morning.png) | ![傍晚軌跡](figures/trajectory_map_evening.png) |
 
 黑底亮色，使用 Bresenham 演算法在使用者連續時步之間畫線，累積得到移動流向。可觀察到：
 - **早晨**：郊區往中心的軌跡明顯，放射狀收斂到名古屋駅
@@ -133,7 +133,7 @@ $$\text{std\_mean}_u = \frac{1}{48} \sum_{t=0}^{47} \frac{\sigma_{x,u,t} + \sigm
 
 ### 3.2 穩定性分布結果（100,000 使用者）
 
-![穩定性分布](../output/figures/user_stability_std.png)
+![穩定性分布](figures/user_stability_std.png)
 
 | 標準差區間 | 人數 | 比例 | 解讀 |
 |---|---|---|---|
@@ -180,7 +180,7 @@ $$\text{std\_mean}_u = \frac{1}{48} \sum_{t=0}^{47} \frac{\sigma_{x,u,t} + \sigm
 
 在執行分群前，我們先對全 200×200 網格的訪問量分布進行分析：
 
-![密度分布直方圖](../output/figures/hdbscan_density_distribution.png)
+![密度分布直方圖](figures/hdbscan_density_distribution.png)
 
 | 訪問量區間 | 格子數 | 累積訪問量 | 說明 |
 |---|---|---|---|
@@ -202,7 +202,7 @@ $$\text{std\_mean}_u = \frac{1}{48} \sum_{t=0}^{47} \frac{\sigma_{x,u,t} + \sigm
 
 為了解析不同密度層下的空間結構，我們對訓練集（d≤60）執行三組 HDBSCAN，逐步縮小輸入範圍至「最核心的高密度格子」：
 
-![三層 HDBSCAN 比較](../output/figures/hdbscan_3panel.png)
+![三層 HDBSCAN 比較](figures/hdbscan_3panel.png)
 
 | 執行設定 | 輸入格子範圍 | 密度門檻 | min_cluster_size | 識別群數 | 雜訊點數 |
 |---|---|---|---|---|---|
@@ -220,9 +220,9 @@ $$\text{std\_mean}_u = \frac{1}{48} \sum_{t=0}^{47} \frac{\sigma_{x,u,t} + \sigm
 
 ### 4.4 Run 3 群集詳細結果
 
-![標記 POI 的 HDBSCAN 群集地圖](../output/figures/hdbscan_annotated.png)
+![標記 POI 的 HDBSCAN 群集地圖](figures/hdbscan_annotated.png)
 
-![各群集訪問量長條圖](../output/figures/hdbscan_cluster_bars.png)
+![各群集訪問量長條圖](figures/hdbscan_cluster_bars.png)
 
 Run 3 識別出的前 12 大群集（按訪問量排序）：
 
@@ -278,7 +278,7 @@ HDBSCAN 的輸出結果不只是地圖上的色塊，而是直接服務於後續
 
 名古屋幾乎 7 成的使用者在 75 天的資料期間，至少有一次記錄出現在名古屋車站 2.5km 範圍內，說明車站是整個都市圈無可替代的中樞節點。
 
-![車站時間模式](../output/figures/nagoya_station_time_pattern.png)
+![車站時間模式](figures/nagoya_station_time_pattern.png)
 
 #### 為什麼名古屋車站有這樣的人流特徵？
 
@@ -314,7 +314,7 @@ HDBSCAN 的輸出結果不只是地圖上的色塊，而是直接服務於後續
 | 工作日 / 假日 比值 | **1.24×** |
 | 全日尖峰時間 | **13:00** |
 
-![名古屋大學時間模式](../output/figures/poi_nagoya_univ_time.png)
+![名古屋大學時間模式](figures/poi_nagoya_univ_time.png)
 
 #### 為什麼名古屋大學有這樣的人流特徵？
 
@@ -348,7 +348,7 @@ HDBSCAN 的輸出結果不只是地圖上的色塊，而是直接服務於後續
 | 工作日 / 假日 比值 | **1.32×** |
 | 全日尖峰時間 | **13:30** |
 
-![名古屋城時間模式](../output/figures/poi_nagoya_castle_time.png)
+![名古屋城時間模式](figures/poi_nagoya_castle_time.png)
 
 #### 為什麼名古屋城有這樣的人流特徵？
 
@@ -379,7 +379,7 @@ HDBSCAN 的輸出結果不只是地圖上的色塊，而是直接服務於後續
 | 工作日 / 假日 比值 | **1.29×** |
 | 全日尖峰時間 | **13:00** |
 
-![大須商店街時間模式](../output/figures/poi_osu_time.png)
+![大須商店街時間模式](figures/poi_osu_time.png)
 
 #### 為什麼大須商店街有這樣的人流特徵？
 
@@ -407,7 +407,7 @@ HDBSCAN 的輸出結果不只是地圖上的色塊，而是直接服務於後續
 | 工作日 / 假日 比值 | **1.27×** |
 | 全日尖峰時間 | **13:00** |
 
-![金山時間模式](../output/figures/poi_kanayama_time.png)
+![金山時間模式](figures/poi_kanayama_time.png)
 
 #### 為什麼金山有這樣的人流特徵？
 
@@ -426,7 +426,7 @@ HDBSCAN 的輸出結果不只是地圖上的色塊，而是直接服務於後續
 
 ### 5.6 五 POI 綜合比較
 
-![四 POI 時間模式比較](../output/figures/poi_4panel_comparison.png)
+![四 POI 時間模式比較](figures/poi_4panel_comparison.png)
 
 | 維度 | 名古屋車站 | 名古屋大學 | 名古屋城 | 大須商店街 | 金山 |
 | --- | --- | --- | --- | --- | --- |
