@@ -29,7 +29,8 @@ def build_grid_heatmap(df: pd.DataFrame) -> np.ndarray:
     density = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.int64)
     counts = df.groupby(["x", "y"]).size()
     for (x, y), cnt in counts.items():
-        density[y, x] = cnt
+        if 0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE:
+            density[y, x] = cnt
     return density
 
 
@@ -82,6 +83,8 @@ def plot_unique_users_map(
     cmap = plt.get_cmap("Reds")
 
     for (x, y), cnt in unique.items():
+        if not (0 <= x < GRID_SIZE and 0 <= y < GRID_SIZE):
+            continue
         norm_val = np.log1p(cnt) / log_max
         r, g, b, _ = cmap(norm_val)
         alpha = 0.25 + 0.75 * norm_val

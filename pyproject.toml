@@ -15,4 +15,5 @@ dependencies = [
     "overpy>=0.7",
     "jpholiday>=0.1",
     "tqdm>=4.66",
+    "pypdf>=6.12.2",
 ]
