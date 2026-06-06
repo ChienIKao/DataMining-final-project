@@ -104,16 +104,24 @@ def run_cvae(
     )
     condition_dim = int(len(condition_df.iloc[0]["condition"]))
     model = CVAE(condition_dim=condition_dim)
-    train_conditions = condition_df[condition_df["d"].isin(train_days)].reset_index(drop=True)
-    model = train_cvae(
-        train_df=train_df,
-        condition_df=train_conditions,
-        model=model,
-        epochs=epochs,
-        batch_size=batch_size,
-        checkpoint_path=str(ckpt_path),
-    )
-    print(f"[cvae] checkpoint saved → {ckpt_path}")
+
+    if ckpt_path.exists():
+        import torch
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model.load_state_dict(torch.load(ckpt_path, map_location=device, weights_only=True))
+        model = model.to(device)
+        print(f"[cvae] loaded checkpoint {ckpt_path}, skipping training")
+    else:
+        train_conditions = condition_df[condition_df["d"].isin(train_days)].reset_index(drop=True)
+        model = train_cvae(
+            train_df=train_df,
+            condition_df=train_conditions,
+            model=model,
+            epochs=epochs,
+            batch_size=batch_size,
+            checkpoint_path=str(ckpt_path),
+        )
+        print(f"[cvae] checkpoint saved → {ckpt_path}")
 
     pred = predict_trajectories(model, condition_df, test_days)
     pred = align_prediction_to_reference(pred, test_df)
@@ -147,6 +155,9 @@ def main() -> None:
     parser.add_argument("--fetch-poi", action="store_true", help="Fetch POI data from OpenStreetMap Overpass API")
     parser.add_argument("--run-baselines", action="store_true")
     parser.add_argument("--run-cvae", action="store_true")
+    parser.add_argument("--eval-cvae", type=str, metavar="CKPT",
+                        help="Skip training, load checkpoint and evaluate. "
+                             "Use 'best' for cvae_best.pt or give full path.")
     parser.add_argument("--cvae-epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=256)
     args = parser.parse_args()
@@ -167,7 +178,7 @@ def main() -> None:
     print(f"train rows={len(train_df):,}, test rows={len(test_df):,}")
 
     feature_outputs = None
-    if not args.skip_features or args.run_cvae:
+    if not args.skip_features or args.run_cvae or args.eval_cvae:
         feature_outputs = run_feature_engineering(train_df, grid_latlon, fetch_poi=args.fetch_poi)
     if args.run_baselines:
         run_baselines(train_df, test_df)
@@ -185,6 +196,42 @@ def main() -> None:
             epochs=args.cvae_epochs,
             batch_size=args.batch_size,
         )
+    if args.eval_cvae:
+        import torch
+        from models.cvae import CVAE, build_condition_table, predict_trajectories
+        if feature_outputs is None:
+            raise RuntimeError("--eval-cvae requires feature engineering outputs")
+        cluster_map, user_hotspots, user_stability, grid_poi = feature_outputs
+        ckpt = Path("models/checkpoints/cvae_best.pt") if args.eval_cvae == "best" \
+               else Path(args.eval_cvae)
+        if not ckpt.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {ckpt}")
+        train_days = sorted(train_df["d"].unique().astype(int).tolist())
+        test_days  = sorted(test_df["d"].unique().astype(int).tolist())
+        uids = sorted(train_df["uid"].unique().astype(int).tolist())
+        condition_df = build_condition_table(
+            uids=uids,
+            days=sorted(set(train_days + test_days)),
+            user_hotspots=user_hotspots,
+            user_stability=user_stability,
+            grid_poi=grid_poi,
+            cluster_map=cluster_map,
+        )
+        condition_dim = int(len(condition_df.iloc[0]["condition"]))
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = CVAE(condition_dim=condition_dim)
+        model.load_state_dict(torch.load(ckpt, map_location=device, weights_only=True))
+        model = model.to(device)
+        print(f"[cvae] loaded {ckpt} for evaluation")
+        pred = predict_trajectories(model, condition_df, test_days)
+        pred = align_prediction_to_reference(pred, test_df)
+        Path("eval/reports").mkdir(parents=True, exist_ok=True)
+        pred.to_csv("eval/reports/cvae_predictions.csv", index=False)
+        from eval.metrics import compute_fde, compute_geobleu, generate_report
+        geobleu_result = compute_geobleu(pred, test_df)
+        fde_result     = compute_fde(pred, test_df)
+        generate_report("cvae", geobleu_result, fde_result)
+        print(f"[cvae] GEO-BLEU={geobleu_result.get('mean', 0.0):.6f}  FDE={fde_result.get('mean', 0.0):.4f}")
 
 
 if __name__ == "__main__":
