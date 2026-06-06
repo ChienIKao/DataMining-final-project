@@ -1,0 +1,6 @@
+{
+  "method": "bigram",
+  "geobleu_mean": 0.16949982229150923,
+  "fde_mean": 8.981668472290039,
+  "per_user_geobleu": {}
+}

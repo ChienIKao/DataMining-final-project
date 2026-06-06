@@ -1,0 +1,6 @@
+{
+  "method": "cvae",
+  "geobleu_mean": 0.0012113945095642063,
+  "fde_mean": 32.17055130004883,
+  "per_user_geobleu": {}
+}

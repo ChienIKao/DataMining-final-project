@@ -1,0 +1,6 @@
+{
+  "method": "per_user_mean",
+  "geobleu_mean": 0.09852360085418357,
+  "fde_mean": 8.625600814819336,
+  "per_user_geobleu": {}
+}
