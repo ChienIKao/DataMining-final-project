@@ -117,6 +117,7 @@ def run_cvae(
 
     pred = predict_trajectories(model, condition_df, test_days)
     pred = align_prediction_to_reference(pred, test_df)
+    Path("eval/reports").mkdir(parents=True, exist_ok=True)
     pred.to_csv("eval/reports/cvae_predictions.csv", index=False)
     geobleu_result = compute_geobleu(pred, test_df)
     fde_result = compute_fde(pred, test_df)
