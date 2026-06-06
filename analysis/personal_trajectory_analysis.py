@@ -12,13 +12,13 @@ import json
 import sys
 from pathlib import Path
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-
 import numpy as np
 import pandas as pd
 import matplotlib
 
 matplotlib.use("Agg")
+matplotlib.rcParams["font.family"] = ["Noto Sans CJK JP", "Droid Sans Fallback", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 
 ROOT = Path(__file__).parent.parent
@@ -34,10 +34,10 @@ TIMES = [f"{(t*30)//60:02d}:{(t*30)%60:02d}" for t in range(48)]
 # Known landmarks for annotation
 KNOWN_POIS = {
     "名古屋車站": (133, 76),
-    "名古屋大學": (113, 96),
-    "名古屋城": (141, 80),
-    "大須商店街": (125, 81),
-    "金山": (122, 81),
+    "名古屋大學": (131, 87),
+    "名古屋城": (136, 80),
+    "大須商店街": (131, 80),
+    "金山": (129, 81),
 }
 
 

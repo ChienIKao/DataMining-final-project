@@ -1,5 +1,8 @@
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.rcParams["font.family"] = ["Noto Sans CJK JP", "Droid Sans Fallback", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 

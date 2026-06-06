@@ -7,12 +7,13 @@ from __future__ import annotations
 
 import io, json, sys
 from pathlib import Path
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
 import numpy as np
 import pandas as pd
 import matplotlib
 matplotlib.use("Agg")
+matplotlib.rcParams["font.family"] = ["Noto Sans CJK JP", "Droid Sans Fallback", "DejaVu Sans"]
+matplotlib.rcParams["axes.unicode_minus"] = False
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.gridspec import GridSpec
@@ -83,10 +84,11 @@ def plot_poi_time(df: pd.DataFrame, cx: int, cy: int, radius: int,
 
 # ── POI analysis ───────────────────────────────────────────────────────────────
 POIS = {
-    "nagoya_univ":   {"name": "Nagoya University", "cx": 131, "cy": 87, "r": 3},
-    "nagoya_castle": {"name": "Nagoya Castle",     "cx": 136, "cy": 80, "r": 3},
-    "osu":           {"name": "Osu Shopping St.",  "cx": 131, "cy": 80, "r": 3},
-    "kanayama":      {"name": "Kanayama",          "cx": 129, "cy": 81, "r": 3},
+    "nagoya_station": {"name": "Nagoya Station",   "cx": 133, "cy": 76, "r": 5},
+    "nagoya_univ":    {"name": "Nagoya University","cx": 131, "cy": 87, "r": 3},
+    "nagoya_castle":  {"name": "Nagoya Castle",    "cx": 136, "cy": 80, "r": 3},
+    "osu":            {"name": "Osu Shopping St.", "cx": 131, "cy": 80, "r": 3},
+    "kanayama":       {"name": "Kanayama",         "cx": 129, "cy": 81, "r": 3},
 }
 
 
@@ -102,9 +104,16 @@ def run_poi_analysis(df: pd.DataFrame) -> dict:
             df, poi["cx"], poi["cy"], poi["r"], poi["name"],
             FIG_DIR / f"poi_{key}_time.png",
         )
-    # Combined 4-panel figure
-    fig, axes = plt.subplots(2, 2, figsize=(16, 8))
-    for ax, (key, poi) in zip(axes.flat, POIS.items()):
+    # Combined 5-panel figure (3 top + 2 bottom centred)
+    fig = plt.figure(figsize=(18, 9))
+    gs = GridSpec(2, 6, figure=fig, hspace=0.45, wspace=0.35)
+    panel_positions = [
+        gs[0, 0:2], gs[0, 2:4], gs[0, 4:6],
+        gs[1, 1:3], gs[1, 3:5],
+    ]
+    poi_items = list(POIS.items())
+    for pos, (key, poi) in zip(panel_positions, poi_items):
+        ax = fig.add_subplot(pos)
         mask = (df["x"].between(poi["cx"] - poi["r"], poi["cx"] + poi["r"]) &
                 df["y"].between(poi["cy"] - poi["r"], poi["cy"] + poi["r"]))
         sub = df[mask]
@@ -113,15 +122,17 @@ def run_poi_analysis(df: pd.DataFrame) -> dict:
         ax.plot(range(48), wday.values, label="Weekday", color="steelblue", linewidth=1.5)
         ax.plot(range(48), hday.values, label="Holiday", color="tomato", linewidth=1.5)
         ratio = results[key].get("weekday_holiday_ratio", 0)
-        ax.set_title(f"{poi['name']}\nWkday/Holiday ratio = {ratio}×", fontsize=10)
+        peak = results[key].get("peak_hhmm", "")
+        ax.set_title(f"{poi['name']}  (±{poi['r']})\nWkday/Holiday = {ratio}×  peak={peak}", fontsize=9)
         ax.set_xticks(range(0, 48, 8))
-        ax.set_xticklabels([TIMES[t] for t in range(0, 48, 8)], fontsize=7)
+        ax.set_xticklabels([TIMES[t] for t in range(0, 48, 8)], fontsize=6.5)
+        ax.set_xlabel("Time of Day", fontsize=7)
+        ax.set_ylabel("Unique Users", fontsize=7)
         ax.legend(fontsize=7)
-    fig.suptitle("Nagoya – 4 POI Comparison: Active Users by Time Slot", fontsize=13)
-    plt.tight_layout()
-    plt.savefig(FIG_DIR / "poi_4panel_comparison.png", dpi=150)
+    fig.suptitle("Nagoya – 5 POI Comparison: Active Users by Time Slot", fontsize=13)
+    plt.savefig(FIG_DIR / "poi_5panel_comparison.png", dpi=150, bbox_inches="tight")
     plt.close()
-    _log(f"  saved: poi_4panel_comparison.png")
+    _log(f"  saved: poi_5panel_comparison.png")
     return results
 
 
