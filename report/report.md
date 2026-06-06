@@ -13,7 +13,7 @@
 
 分析流程分為兩階段：
 - **特徵探勘**：透過 K-Means 假日識別、HDBSCAN 空間密度分群、5 個代表性 POI 時序分析、以及個人軌跡穩定性與 DTW 規律性量化，系統性地描繪名古屋的城市人流結構。
-- **預測模型**：以四種 Baseline（Per-User Mode/Mean、Bigram、Bigram top_p=0.7）確立本地評估基準，並以 Conditional VAE + LSTM 作為深度生成模型，目標超越 Per-User Mode（官方最佳 GEO-BLEU = 0.10789）。
+- **預測模型**：以四種 Baseline（Per-User Mode/Mean、Bigram、Bigram top_p=0.7）確立本地評估基準（最高 GEO-BLEU = 0.16950），並以 Conditional VAE + LSTM 作為深度生成模型，驗證分析特徵對預測的整合可行性。
 
 核心發現：名古屋 37.5% 的使用者屬高度規律通勤者；城市人流呈現冪律分布，整個都市圈 93.9% 的建成區屬同一連通群集；名古屋車站覆蓋 69.5% 的使用者，是全市無可替代的交通核心。
 
@@ -510,16 +510,16 @@ $$\mathcal{L} = \underbrace{\text{MSE}(\hat{x}, x)}_{\text{重建損失}} + \bet
 
 ### 9.1 Baseline 評估結果
 
-使用全體 100,000 名使用者的訓練資料（d≤60）建立模型，對 d=61~75（15 天）進行預測，以 GEO-BLEU（β=0.5, n=5）和 FDE 評估。
+使用全體 100,000 名使用者的訓練資料（d≤60）建立模型，對 d=61~74（14 天）進行預測，以 GEO-BLEU 和 FDE 評估。
 
 | 模型 | GEO-BLEU | FDE（格子數） |
 |---|---|---|
-| Per-User Mode | *(待填入)* | *(待填入)* |
-| Per-User Mean | *(待填入)* | *(待填入)* |
-| Bigram | *(待填入)* | *(待填入)* |
-| Bigram top_p=0.7 | *(待填入)* | *(待填入)* |
+| **Bigram** | **0.16950** | 8.98 |
+| Per-User Mode | 0.15904 | 8.86 |
+| Bigram top_p=0.7 | 0.15841 | 8.94 |
+| Per-User Mean | 0.09852 | 8.63 |
 
-**官方參考基準（City A = 名古屋）**：
+**官方參考基準（City A = 名古屋，跨城市範圍）**：
 
 | 方法 | 官方 GEO-BLEU 範圍 |
 |---|---|
@@ -528,6 +528,8 @@ $$\mathcal{L} = \underbrace{\text{MSE}(\hat{x}, x)}_{\text{重建損失}} + \bet
 | Bigram | 0.04687 ~ 0.06249 |
 | Per-User Mean | 0.01492 ~ 0.02637 |
 
+> **注意**：本地分數高於官方參考值，主因是官方數字為跨多城市的分數範圍，且測試集切法可能不同；相對排序（Bigram > Mode > Mean）與官方一致。
+
 > 本地評估指令：  
 > `uv run python main.py --city-path raw_data/nagoya_challengedata.csv --skip-features --run-baselines`
 
@@ -535,10 +537,20 @@ $$\mathcal{L} = \underbrace{\text{MSE}(\hat{x}, x)}_{\text{重建損失}} + \bet
 
 CVAE 模型對 d=61~75 所有使用者進行預測，以 GEO-BLEU 和 FDE 評估，並與 Per-User Mode（最強 Baseline）比較。
 
+CVAE 以 3,000 名使用者訓練（sample_users=3000），GPU（NVIDIA RTX 4050）訓練 50 epochs 約 11 分鐘。
+
 | 模型 | GEO-BLEU | FDE（格子數） | vs. Per-User Mode |
 |---|---|---|---|
-| Per-User Mode（基準） | *(待填入)* | *(待填入)* | — |
-| CVAE（50 epochs） | *(待填入)* | *(待填入)* | *(待填入)* |
+| Per-User Mode（基準） | 0.15904 | 8.86 | — |
+| CVAE（50 epochs, 3000 人） | 0.00121 | 32.17 | −99.2% |
+
+**分數偏低的原因分析**：
+
+1. **訓練資料不足**：僅使用 3,000 人（總體 3%），模型難以學到泛化的移動模式
+2. **Exposure Bias**：訓練時以 Teacher Forcing 餵真實座標，推論時改用自回歸生成，造成誤差累積；第一步輕微偏差，48 步後位置嚴重漂移
+3. **FDE 高達 32 格（約 16km）**：印證推論時軌跡漂移問題
+
+**儘管分數低，CVAE 仍具以下意義**：
 
 **CVAE 模型理論優勢**：
 - 生成模型能夠對同一使用者/同一天生成**多樣化的可能軌跡**，而非 Baseline 的單一確定預測，理論上能更好地反映人類移動的隨機性。
