@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 
 GRID_SIZE = 200
 GEOBLEU_BETA = 0.5
@@ -39,7 +41,7 @@ def compute_geobleu(
     reference: pd.DataFrame,
     processes: int = 4,
 ) -> dict:
-    """Compute GEO-BLEU if geobleu is installed; otherwise use per-user single calls."""
+    """Compute GEO-BLEU using geobleu library bulk method."""
     _require_columns(generated)
     _require_columns(reference)
     import geobleu
@@ -47,32 +49,16 @@ def compute_geobleu(
     generated = generated[REQUIRED_COLUMNS].sort_values(REQUIRED_COLUMNS)
     reference = reference[REQUIRED_COLUMNS].sort_values(REQUIRED_COLUMNS)
 
-    if hasattr(geobleu, "calc_geobleu_bulk"):
-        try:
-            score = geobleu.calc_geobleu_bulk(
-                generated.to_records(index=False).tolist(),
-                reference.to_records(index=False).tolist(),
-                processes=processes,
-                beta=GEOBLEU_BETA,
-                n=GEOBLEU_N,
-            )
-            if isinstance(score, dict):
-                return score
-            return {"mean": float(score), "per_user": {}}
-        except TypeError:
-            pass
-
-    per_user = {}
-    for uid in sorted(set(generated["uid"]) & set(reference["uid"])):
-        gen_user = generated[generated["uid"].eq(uid)][["d", "t", "x", "y"]]
-        ref_user = reference[reference["uid"].eq(uid)][["d", "t", "x", "y"]]
-        score = geobleu.calc_geobleu_single(
-            [tuple(row) for row in gen_user.to_records(index=False)],
-            [tuple(row) for row in ref_user.to_records(index=False)],
-        )
-        per_user[int(uid)] = float(score)
-    mean = float(np.mean(list(per_user.values()))) if per_user else 0.0
-    return {"mean": mean, "per_user": per_user}
+    n_users = generated["uid"].nunique()
+    print(f"[metrics] converting {len(generated):,} rows to records …")
+    t0 = time.time()
+    gen_list = [tuple(r) for r in generated.itertuples(index=False)]
+    ref_list = [tuple(r) for r in reference.itertuples(index=False)]
+    print(f"[metrics] conversion done ({time.time()-t0:.1f}s), running bulk GEO-BLEU ({n_users:,} users, {processes} workers) …")
+    t1 = time.time()
+    score = geobleu.calc_geobleu_bulk(gen_list, ref_list, processes=processes)
+    print(f"[metrics] GEO-BLEU done: mean={score:.5f}  ({time.time()-t1:.1f}s)")
+    return {"mean": float(score), "per_user": {}}
 
 
 def compute_fde(generated: pd.DataFrame, reference: pd.DataFrame) -> dict:

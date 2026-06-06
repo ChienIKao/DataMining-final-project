@@ -33,15 +33,43 @@ class TrajectoryEncoder(nn.Module):
 class TrajectoryDecoder(nn.Module):
     def __init__(self, latent_dim: int = 64, hidden_dim: int = 128, output_dim: int = 2, condition_dim: int = 40):
         super().__init__()
-        self.input_embed = nn.Linear(latent_dim + condition_dim, hidden_dim)
-        self.lstm = nn.LSTM(input_size=hidden_dim, hidden_size=hidden_dim, num_layers=2, batch_first=True)
+        self.hidden_dim = hidden_dim
+        self.num_layers = 2
+        # z+condition → 初始化 LSTM hidden/cell state
+        self.h_init = nn.Linear(latent_dim + condition_dim, hidden_dim * self.num_layers)
+        self.c_init = nn.Linear(latent_dim + condition_dim, hidden_dim * self.num_layers)
+        # 前一步座標 → LSTM input
+        self.input_proj = nn.Linear(output_dim, hidden_dim)
+        self.lstm = nn.LSTM(input_size=hidden_dim, hidden_size=hidden_dim, num_layers=self.num_layers, batch_first=True)
         self.fc_out = nn.Linear(hidden_dim, output_dim)
 
-    def forward(self, z: Tensor, condition: Tensor) -> Tensor:
-        seed = torch.relu(self.input_embed(torch.cat([z, condition], dim=-1)))
-        sequence = seed.unsqueeze(1).expand(-1, TIME_STEPS, -1)
-        output, _ = self.lstm(sequence)
-        return torch.sigmoid(self.fc_out(output))
+    def _init_states(self, z: Tensor, condition: Tensor) -> tuple[Tensor, Tensor]:
+        zc = torch.cat([z, condition], dim=-1)
+        B = z.size(0)
+        h = torch.tanh(self.h_init(zc)).view(B, self.num_layers, self.hidden_dim).permute(1, 0, 2).contiguous()
+        c = torch.tanh(self.c_init(zc)).view(B, self.num_layers, self.hidden_dim).permute(1, 0, 2).contiguous()
+        return h, c
+
+    def forward(self, z: Tensor, condition: Tensor, x_teacher: Tensor | None = None) -> Tensor:
+        h, c = self._init_states(z, condition)
+        B = z.size(0)
+        if x_teacher is not None:
+            # Teacher forcing：前一步真實座標 → 預測當前步
+            start = torch.zeros(B, 1, x_teacher.size(-1), device=z.device)
+            inp = self.input_proj(torch.cat([start, x_teacher[:, :-1]], dim=1))
+            out, _ = self.lstm(inp, (h, c))
+            return torch.sigmoid(self.fc_out(out))
+        else:
+            # 自回歸推論：用前一步預測當輸入
+            outputs: list[Tensor] = []
+            prev = torch.zeros(B, 1, 2, device=z.device)
+            for _ in range(TIME_STEPS):
+                inp = self.input_proj(prev)
+                out, (h, c) = self.lstm(inp, (h, c))
+                coord = torch.sigmoid(self.fc_out(out))
+                outputs.append(coord)
+                prev = coord.detach()
+            return torch.cat(outputs, dim=1)
 
 
 class CVAE(nn.Module):
@@ -58,7 +86,7 @@ class CVAE(nn.Module):
     def forward(self, x: Tensor, condition: Tensor) -> tuple[Tensor, Tensor, Tensor]:
         mu, log_var = self.encoder(x, condition)
         z = self.reparameterize(mu, log_var)
-        return self.decoder(z, condition), mu, log_var
+        return self.decoder(z, condition, x_teacher=x), mu, log_var
 
     def sample(self, condition: Tensor, n_samples: int = 1) -> Tensor:
         condition = condition.repeat_interleave(n_samples, dim=0)
@@ -182,19 +210,31 @@ def train_cvae(
     dataset = _TrajectoryDataset(train_df, condition_df)
     if len(dataset) == 0:
         raise ValueError("No CVAE training samples were built")
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    device = next(model.parameters()).device
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, pin_memory=torch.cuda.is_available())
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    for _ in range(epochs):
+    from tqdm import tqdm
+    print(f"[cvae] training {epochs} epochs, {len(dataset):,} samples, batch={batch_size}, device={device}")
+    epoch_bar = tqdm(range(epochs), desc="epoch", unit="ep")
+    for epoch in epoch_bar:
+        # Beta annealing：前 50% epoch beta 從 0 線性升到目標值，避免 KL collapse
+        current_beta = beta * min(1.0, (epoch + 1) / max(1, epochs * 0.5))
         model.train()
-        for x, condition in loader:
+        epoch_loss = 0.0
+        batch_bar = tqdm(loader, desc=f"  ep{epoch+1:03d}", unit="batch", leave=False, mininterval=5.0)
+        for x, condition in batch_bar:
             x = x.to(device)
             condition = condition.to(device)
             optimizer.zero_grad()
             x_recon, mu, log_var = model(x, condition)
-            loss = cvae_loss(x_recon, x, mu, log_var, beta)
+            loss = cvae_loss(x_recon, x, mu, log_var, current_beta)
             loss.backward()
             optimizer.step()
+            epoch_loss += loss.item()
+            batch_bar.set_postfix(loss=f"{loss.item():.4f}", beta=f"{current_beta:.2f}")
+        avg_loss = epoch_loss / len(loader)
+        epoch_bar.set_postfix(loss=f"{avg_loss:.4f}", beta=f"{current_beta:.2f}")
     path = Path(checkpoint_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(model.state_dict(), path)

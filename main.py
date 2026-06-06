@@ -16,7 +16,7 @@ from analysis.clustering import (
 from analysis.trajectory import build_user_stability_features
 from data.loader import load_city, split_train_test
 from data.preprocessing import build_grid_latlon_table, label_holidays
-from models.baseline import run_all_baselines
+from models.baseline import align_prediction_to_reference, run_all_baselines
 from models.cvae import CVAE, build_condition_table, predict_trajectories, train_cvae
 from eval.metrics import compute_fde, compute_geobleu, generate_report
 
@@ -83,6 +83,14 @@ def run_cvae(
     epochs: int = 1,
     batch_size: int = 256,
 ) -> None:
+    import json, shutil
+    n_users = train_df["uid"].nunique()
+    ckpt_dir = Path("models/checkpoints")
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_path = ckpt_dir / f"cvae_ep{epochs}_u{n_users}.pt"
+    best_path = ckpt_dir / "cvae_best.pt"
+    best_meta = ckpt_dir / "cvae_best_meta.json"
+
     train_days = sorted(train_df["d"].unique().astype(int).tolist())
     test_days = sorted(test_df["d"].unique().astype(int).tolist())
     uids = sorted(train_df["uid"].unique().astype(int).tolist())
@@ -103,14 +111,28 @@ def run_cvae(
         model=model,
         epochs=epochs,
         batch_size=batch_size,
-        checkpoint_path="models/checkpoints/cvae_checkpoint.pt",
+        checkpoint_path=str(ckpt_path),
     )
+    print(f"[cvae] checkpoint saved → {ckpt_path}")
+
     pred = predict_trajectories(model, condition_df, test_days)
+    pred = align_prediction_to_reference(pred, test_df)
     pred.to_csv("eval/reports/cvae_predictions.csv", index=False)
     geobleu_result = compute_geobleu(pred, test_df)
     fde_result = compute_fde(pred, test_df)
     generate_report("cvae", geobleu_result, fde_result)
-    print(f"cvae: GEO-BLEU={geobleu_result.get('mean', 0.0):.6f}")
+    score = float(geobleu_result.get("mean", 0.0))
+    print(f"[cvae] GEO-BLEU={score:.6f}  (epochs={epochs}, users={n_users})")
+
+    best_score = 0.0
+    if best_meta.exists():
+        best_score = json.loads(best_meta.read_text()).get("geobleu", 0.0)
+    if score > best_score:
+        shutil.copy2(ckpt_path, best_path)
+        best_meta.write_text(json.dumps({"geobleu": score, "epochs": epochs, "users": n_users}, indent=2))
+        print(f"[cvae] ★ new best! GEO-BLEU={score:.6f} → {best_path}")
+    else:
+        print(f"[cvae] best unchanged (best={best_score:.6f})")
 
 
 def main() -> None:
