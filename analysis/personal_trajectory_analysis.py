@@ -411,10 +411,12 @@ def activity_space_cluster(features_df: pd.DataFrame) -> dict:
     HDBSCAN on user bounding-box vectors to find life-zone groups.
     """
     import hdbscan as _hdbscan
+    from matplotlib.patches import Rectangle
 
     _log("Running activity space HDBSCAN clustering …")
     bbox_cols = ["bbox_xmin", "bbox_ymin", "bbox_xmax", "bbox_ymax"]
-    feat = features_df[["uid"] + bbox_cols].dropna().copy()
+    loc_cols = ["home_x", "home_y", "work_x", "work_y"]
+    feat = features_df[["uid"] + bbox_cols + loc_cols].dropna(subset=bbox_cols).copy()
     X = feat[bbox_cols].to_numpy(dtype=float)
 
     clusterer = _hdbscan.HDBSCAN(min_cluster_size=300, min_samples=350)
@@ -463,18 +465,40 @@ def activity_space_cluster(features_df: pd.DataFrame) -> dict:
     ax.set_xlabel("Cluster")
     ax.set_ylabel("使用者數")
 
-    # Scatter: bbox center coloured by cluster
+    # Living-range overlay: each sampled user's bbox drawn as a translucent
+    # rectangle (+ home/work markers), coloured by cluster — makes the size
+    # and overlap of each life-zone group visible at a glance, not just its centre.
     ax2 = axes[1]
-    feat["cx"] = (feat["bbox_xmin"] + feat["bbox_xmax"]) / 2
-    feat["cy"] = (feat["bbox_ymin"] + feat["bbox_ymax"]) / 2
+    rng = np.random.RandomState(42)
+    max_per_cluster = 250
+    legend_handles = []
     for cid in unique_labels:
         sub = feat[feat["cluster"] == cid]
-        if len(sub) > 2000:
-            sub = sub.sample(2000, random_state=42)
+        n = len(sub)
+        sample_n = min(max_per_cluster, n)
+        sample = sub.sample(sample_n, random_state=42) if n > sample_n else sub
         color = "lightgray" if cid == -1 else f"C{cid}"
-        lbl   = "noise" if cid == -1 else f"Cluster {cid}"
-        alpha = 0.08 if cid == -1 else 0.5
-        ax2.scatter(sub["cx"], sub["cy"], s=2, alpha=alpha, color=color, label=lbl)
+        lbl   = f"noise — {n:,} users" if cid == -1 else f"Cluster {cid} — {n:,} users"
+        rect_alpha = 0.05 if cid == -1 else 0.12
+        for _, row in sample.iterrows():
+            xmin, ymin, xmax, ymax = row["bbox_xmin"], row["bbox_ymin"], row["bbox_xmax"], row["bbox_ymax"]
+            ax2.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin,
+                                    fill=False, edgecolor=color, alpha=rect_alpha, linewidth=1))
+            if pd.notna(row["home_x"]):
+                ax2.scatter(row["home_x"], row["home_y"], c=color, s=14, marker="o",
+                            alpha=0.6, edgecolors="k", linewidths=0.3, zorder=5)
+            if pd.notna(row["work_x"]):
+                ax2.scatter(row["work_x"], row["work_y"], c=color, s=14, marker="^",
+                            alpha=0.6, edgecolors="k", linewidths=0.3, zorder=5)
+        legend_handles.append(plt.Line2D([0], [0], color=color, lw=4, label=lbl))
+
+    # Marker-shape legend + cluster-colour legend
+    legend_handles += [
+        plt.Line2D([0], [0], marker="o", color="w", markerfacecolor="gray",
+                   markeredgecolor="k", markersize=6, label="Home"),
+        plt.Line2D([0], [0], marker="^", color="w", markerfacecolor="gray",
+                   markeredgecolor="k", markersize=6, label="Work"),
+    ]
 
     # Overlay known POIs
     for name, (x, y) in KNOWN_POIS.items():
@@ -484,14 +508,14 @@ def activity_space_cluster(features_df: pd.DataFrame) -> dict:
 
     ax2.set_xlim(0, GRID_SIZE)
     ax2.set_ylim(0, GRID_SIZE)
-    ax2.set_title("生活圈聚類 — 使用者活動中心分布")
+    ax2.set_title(f"生活圈聚類 — 使用者活動範圍疊圖（每群抽樣 ≤{max_per_cluster} 人）")
     ax2.set_xlabel("Grid X（South → North）")
     ax2.set_ylabel("Grid Y（West → East）")
-    ax2.legend(markerscale=5, fontsize=8)
+    ax2.legend(handles=legend_handles, fontsize=7, loc="upper left", bbox_to_anchor=(1.01, 1))
 
     plt.tight_layout()
     path = FIG_DIR / "activity_space_clusters.png"
-    plt.savefig(path, dpi=150)
+    plt.savefig(path, dpi=150, bbox_inches="tight")
     plt.close()
     _log(f"  saved → {path.name}")
 
